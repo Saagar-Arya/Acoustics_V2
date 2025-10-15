@@ -84,6 +84,7 @@ class Hydrophone_Array:
         fft_freqs = fftfreq(voltage_len, d=self.sampling_freq)
         
         # Find peak given a search band
+        # TODO: Add common sense check. Take average of voltages. Peak voltage should be higher than average
         search_band = (fft_freqs > self.search_band_min) & (fft_freqs < self.search_band_max)
         if np.any(search_band):
             freqs_in_band = fft_freqs[search_band]
