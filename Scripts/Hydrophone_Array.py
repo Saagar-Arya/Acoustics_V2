@@ -12,11 +12,15 @@ class Hydrophone_Array:
         search_band_min:float=25000,
         search_band_max:float=40000, 
         bandwidth:float=100.0,
+        std:int=3,
     ):
         self.search_band_min = search_band_min
         self.search_band_max = search_band_max
         self.bandwidth = float(bandwidth)
-        self.sampling_freq = 1.0/sampling_freq
+        self.sampling_freq = float(sampling_freq)
+        self.dt = 1 / sampling_freq
+
+        self.std = std
 
         self.hydrophone_0 = Hydrophone.Hydrophone()
         self.hydrophone_1 = Hydrophone.Hydrophone()
@@ -65,9 +69,12 @@ class Hydrophone_Array:
             return
         
         ax.plot(hydrophone.times, hydrophone.voltages, label="Original")
-        ax.plot(hydrophone.times, hydrophone.filtered_signal, label="Filtered")
-        ax.plot(hydrophone.times, hydrophone.envelope, label="Envelope", linestyle="--")
-        ax.axvline(hydrophone.toa_time, color="r", linestyle=":", label=f"ToA = {hydrophone.toa_time:.6f}s")
+        if getattr(hydrophone, "filtered_signal", None) is not None:
+            ax.plot(hydrophone.times, hydrophone.filtered_signal, label="Filtered")
+        if getattr(hydrophone, "envelope", None) is not None:
+            ax.plot(hydrophone.times, hydrophone.envelope, label="Envelope", linestyle="--")
+        if getattr(hydrophone, "toa_time", None) is not None:
+            ax.axvline(hydrophone.toa_time, color="r", linestyle=":", label=f"ToA = {hydrophone.toa_time:.6f}s")
         ax.set_xlabel("Time (s)")
         ax.set_ylabel("Voltage")
         ax.set_title("ToA Detection")
@@ -81,16 +88,14 @@ class Hydrophone_Array:
         # Compute FFT
         voltage_len = len(hydrophone.voltages)
         fft_vals = fft(hydrophone.voltages,n=voltage_len)
-        fft_freqs = fftfreq(voltage_len, d=self.sampling_freq)
+        fft_freqs = fftfreq(voltage_len, d=self.dt)
         
         # Find peak given a search band
-        # TODO: Add common sense check. Take average of voltages. Peak voltage should be higher than average
         search_band = (fft_freqs > self.search_band_min) & (fft_freqs < self.search_band_max)
         if np.any(search_band):
             freqs_in_band = fft_freqs[search_band]
             fft_in_band = fft_vals[search_band]
             peak_freq = float(freqs_in_band[np.argmax(np.abs(fft_in_band))])
-            hydrophone.found_peak = True
         else:
             # fallback to global positive peak
             hydrophone.found_peak = False
@@ -104,12 +109,27 @@ class Hydrophone_Array:
         filtered_fft[narrow_band] = fft_vals[narrow_band]
 
         filtered_signal = np.real(ifft(filtered_fft))[:voltage_len]
-
         envelope = np.abs(hilbert(filtered_signal))
+
+        env_mean = float(np.mean(envelope))
+        env_std = float(np.std(envelope))
+        env_max = float(np.max(envelope))
+
+        if env_std < 1e-12:
+            min_abs_thresh = 1e-6
+            if env_max < min_abs_thresh:
+                hydrophone.found_peak = False
+                return
+        else:
+            if env_max < (env_mean + self.std * env_std):
+                hydrophone.found_peak = False
+                return
+
         threshold = 0.3 * np.max(envelope)
         toa_idx = np.argmax(envelope > threshold)
         toa_time = hydrophone.times[toa_idx]
-
+        
+        hydrophone.found_peak = True
         hydrophone.toa_idx = toa_idx
         hydrophone.toa_time = toa_time
         hydrophone.peak_freq = peak_freq
