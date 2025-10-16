@@ -115,8 +115,8 @@ class Hydrophone_Array:
         env_std = float(np.std(envelope))
         env_max = float(np.max(envelope))
 
-        if env_std < 1e-12:
-            min_abs_thresh = 1e-6
+        if env_std < 1e-2:
+            min_abs_thresh = 1e-1
             if env_max < min_abs_thresh:
                 hydrophone.found_peak = False
                 return
