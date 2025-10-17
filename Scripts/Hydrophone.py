@@ -1,15 +1,15 @@
-class Hydrophone():
-    def __init__(self):
-        self.times = None
-        self.voltages = None
+from typing import Optional
+import numpy as np 
 
-        self.toa_idx = None
-        self.toa_time = None
-        self.peak_freq = None
-        self.filtered_signal = None
-        self.envelope = None
+class Hydrophone:
+    times: Optional[np.ndarray] = None
+    voltages: Optional[np.ndarray] = None
 
-        self.gain = 1
-        self.phase = 0
-
-        self.found_peak = False
+    # results
+    toa_idx: Optional[int] = None
+    toa_time: Optional[float] = None
+    toa_peak: Optional[float] = None
+    peak_freq: Optional[float] = None
+    filtered_signal: Optional[np.ndarray] = None
+    envelope: Optional[np.ndarray] = None
+    found_peak: bool = False

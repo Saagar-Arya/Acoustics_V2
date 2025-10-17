@@ -12,7 +12,6 @@ class Hydrophone_Array:
         search_band_min:float=25000,
         search_band_max:float=40000, 
         bandwidth:float=100.0,
-        std:int=3,
     ):
         self.search_band_min = search_band_min
         self.search_band_max = search_band_max
@@ -20,13 +19,13 @@ class Hydrophone_Array:
         self.sampling_freq = float(sampling_freq)
         self.dt = 1 / sampling_freq
 
-        self.std = std
-
         self.hydrophone_0 = Hydrophone.Hydrophone()
         self.hydrophone_1 = Hydrophone.Hydrophone()
         self.hydrophone_2 = Hydrophone.Hydrophone()
         self.hydrophone_3 = Hydrophone.Hydrophone()
-        self.hydrophones = [self.hydrophone_0,self.hydrophone_1,self.hydrophone_2,self.hydrophone_3]
+        self.hydrophones = [self.hydrophone_0,self.hydrophone_1,self.hydrophone_2,self.hydrophone_3]        
+
+        self.threshold_factor = 0.3
 
     def csv_to_np (self, path: str):
         skip_rows = 0
@@ -61,7 +60,7 @@ class Hydrophone_Array:
         plt.show()
 
     @staticmethod
-    def plot_hydrophone(hydrophone:Hydrophone.Hydrophone, ax):
+    def plot_envelope_hydrophone(hydrophone:Hydrophone.Hydrophone, ax):
         if hydrophone.found_peak is False:
             ax.text(0.5, 0.5, "No data loaded", ha="center", va="center", transform=ax.transAxes)
             ax.set_title("ToA Detection (No Data)")
@@ -80,72 +79,8 @@ class Hydrophone_Array:
         ax.set_title("ToA Detection")
         ax.legend(loc="best")
         ax.grid(True)
-                
-    def estimate_TOA(self, hydrophone:Hydrophone.Hydrophone):
-        if (hydrophone.times is None or hydrophone.voltages is None):
-            raise RuntimeError("Load data first with from_csv() or from_arrays().")
-        
-        # Compute FFT
-        voltage_len = len(hydrophone.voltages)
-        fft_vals = fft(hydrophone.voltages,n=voltage_len)
-        fft_freqs = fftfreq(voltage_len, d=self.dt)
-        
-        # Find peak given a search band
-        search_band = (fft_freqs > self.search_band_min) & (fft_freqs < self.search_band_max)
-        if np.any(search_band):
-            freqs_in_band = fft_freqs[search_band]
-            fft_in_band = fft_vals[search_band]
-            peak_freq = float(freqs_in_band[np.argmax(np.abs(fft_in_band))])
-        else:
-            # fallback to global positive peak
-            hydrophone.found_peak = False
-            return
-            pos = fft_freqs > 0
-            peak_freq = float(fft_freqs[pos][np.argmax(np.abs(fft_vals[pos]))])
 
-        # Narrow Band Pass Filter
-        narrow_band = np.abs(np.abs(fft_freqs) - peak_freq) <= self.bandwidth
-        filtered_fft = np.zeros_like(fft_vals)
-        filtered_fft[narrow_band] = fft_vals[narrow_band]
-
-        filtered_signal = np.real(ifft(filtered_fft))[:voltage_len]
-        envelope = np.abs(hilbert(filtered_signal))
-
-        env_mean = float(np.mean(envelope))
-        env_std = float(np.std(envelope))
-        env_max = float(np.max(envelope))
-
-        if env_std < 1e-2:
-            min_abs_thresh = 1e-1
-            if env_max < min_abs_thresh:
-                hydrophone.found_peak = False
-                return
-        else:
-            if env_max < (env_mean + self.std * env_std):
-                hydrophone.found_peak = False
-                return
-
-        threshold = 0.3 * np.max(envelope)
-        toa_idx = np.argmax(envelope > threshold)
-        toa_time = hydrophone.times[toa_idx]
-        
-        hydrophone.found_peak = True
-        hydrophone.toa_idx = toa_idx
-        hydrophone.toa_time = toa_time
-        hydrophone.peak_freq = peak_freq
-        hydrophone.filtered_signal = filtered_signal
-        hydrophone.envelope = envelope
-
-    def estimate_selected_TOA(self, selected: list[bool] = [True,True,True,True]):
-        for hydrophone, s in zip(self.hydrophones, selected):
-            if s:
-                self.estimate_TOA(hydrophone)
-
-    def print_hydrophone_toas(self):
-        sorted_hydros = sorted(enumerate(self.hydrophones),
-            key=lambda x: (not x[1].found_peak, x[1].toa_time)
-        )
-
+    def print_envelope_toas(self):
         for i, h in sorted(
             enumerate(self.hydrophones),
             key=lambda ih: (not ih[1].found_peak, ih[1].toa_time if ih[1].toa_time is not None else float('inf'))
@@ -154,3 +89,220 @@ class Hydrophone_Array:
                 print(f"Hydrophone {i} saw ping at {h.toa_time:.6f}s (found_peak={h.found_peak})")
             else:
                 print(f"Hydrophone {i} saw ping at N/A (found_peak={h.found_peak})")
+
+    def bandpass_signal(self, hydrophone: Hydrophone) -> None:
+        if hydrophone.voltages is None:
+            raise RuntimeError("Hydrophone has no voltage data.")
+
+        voltage_len = len(hydrophone.voltages)
+        fft_vals = fft(hydrophone.voltages, n=voltage_len)
+        fft_freqs = fftfreq(voltage_len, d=self.dt)
+
+        # search only positive freqs for peak
+        pos_mask = fft_freqs > 0
+        search_band = pos_mask & (fft_freqs >= self.search_band_min) & (fft_freqs <= self.search_band_max)
+
+        if np.any(search_band):
+            freqs_in_band = fft_freqs[search_band]
+            fft_in_band = fft_vals[search_band]
+            peak_idx = np.argmax(np.abs(fft_in_band))
+            peak_freq = float(freqs_in_band[peak_idx])
+        else:
+            hydrophone.filtered_signal = None
+            hydrophone.peak_freq = None
+            hydrophone.found_peak = False
+            return
+
+        # narrow band filter
+        narrow_band = np.abs(np.abs(fft_freqs) - peak_freq) <= self.bandwidth
+        filtered_fft = np.zeros_like(fft_vals)
+        filtered_fft[narrow_band] = fft_vals[narrow_band]
+
+        filtered_signal = np.real(ifft(filtered_fft))[:voltage_len]
+
+        hydrophone.filtered_signal = filtered_signal
+        hydrophone.peak_freq = peak_freq
+                            
+    def estimate_by_envelope(self, hydrophone:Hydrophone.Hydrophone):
+        self.bandpass_signal(hydrophone)
+        hydrophone.toa_idx = None
+        hydrophone.toa_time = None
+        hydrophone.toa_peak = None
+        hydrophone.envelope = None
+
+        if (hydrophone.times is None or hydrophone.voltages is None):
+            raise RuntimeError("Load data first with from_csv() or from_arrays().")
+        
+        envelope = np.abs(hilbert(hydrophone.filtered_signal))
+
+        threshold = 0.3 * np.max(envelope)
+        toa_idx = np.argmax(envelope > threshold)
+        toa_time = hydrophone.times[toa_idx]
+        
+        toa_idx_peak = np.argmax(envelope > np.max(envelope))
+        toa_peak = hydrophone.times[toa_idx_peak]
+
+        hydrophone.found_peak = True
+        hydrophone.toa_idx = toa_idx
+        hydrophone.toa_time = toa_time
+        hydrophone.toa_peak = toa_peak
+        hydrophone.envelope = envelope
+
+    def estimate_selected_by_envelope(self, selected: list[bool] = [True,True,True,True]):
+        for hydrophone, s in zip(self.hydrophones, selected):
+            if s:
+                self.estimate_by_envelope(hydrophone)
+
+    def gcc_phat(self, h0, h1, max_tau=None, regularization=1e-8, polarity_insensitive=True):
+        self.bandpass_signal(h0)
+        self.bandpass_signal(h1)
+
+        # ensure zero-mean and apply window
+        h0.filtered_signal = h0.filtered_signal - np.mean(h0.filtered_signal)
+        h1.filtered_signal = h1.filtered_signal - np.mean(h1.filtered_signal)
+
+        winh0 = np.hanning(h0.filtered_signal.size)
+        winh1 = np.hanning(h1.filtered_signal.size)
+        h0w = h0.filtered_signal * winh0
+        h1w = h1.filtered_signal * winh1
+
+        # FFT length (>= len(x)+len(y)), use next power of two
+        n = h0w.size + h1w.size
+        nfft = 1 << int(np.ceil(np.log2(n)))
+
+        # compute cross-spectrum and PHAT-normalize
+        SIG = np.fft.rfft(h0w, n=nfft)
+        REFSIG = np.fft.rfft(h1w, n=nfft)
+        R = SIG * np.conj(REFSIG)
+
+        denom = np.abs(R)
+        denom = denom + regularization * np.max(denom)
+        R_phat = R / denom
+
+        cc_full = np.fft.irfft(R_phat, n=nfft)
+
+        # determine max_shift in samples around center
+        max_shift = int(nfft // 2)
+        if max_tau is not None:
+            # limit by user-provided maximum lag (in seconds)
+            max_shift = min(int(self.sampling_freq * float(max_tau)), max_shift)
+
+        # center around zero lag
+        cc = np.concatenate((cc_full[-max_shift:], cc_full[:max_shift + 1]))
+        lags_samples = np.arange(-max_shift, max_shift + 1)
+        lags_seconds = lags_samples / float(self.sampling_freq)
+
+        # find peak (optionally polarity-insensitive)
+        if polarity_insensitive:
+            peak_idx = np.argmax(np.abs(cc))
+        else:
+            peak_idx = np.argmax(cc)
+
+        shift_samples = lags_samples[peak_idx]
+        tau = shift_samples / float(self.sampling_freq)
+
+        return tau, cc, lags_seconds, shift_samples
+    
+    def estimate_selected_by_gcc(self,
+                                 selected: list[bool] = [True, True, True, True],
+                                 max_tau=None,
+                                 regularization=1e-8,
+                                 polarity_insensitive=True):
+        """
+        Estimate relative arrival times for the selected hydrophones using GCC-PHAT.
+
+        Approach:
+          - Compute pairwise taus: tau_ij = estimated (t_i - t_j) from gcc_phat(h_i, h_j).
+          - Build linear system with equations t_i - t_j = tau_ij for each measured pair.
+          - Solve least-squares for t = relative times (unique up to an additive constant).
+          - Normalize so earliest time == 0 and store on each hydrophone as .gcc_time
+            and flag .gcc_found = True for hydrophones included.
+
+        Notes:
+          - Uses your existing gcc_phat implementation which will call bandpass_signal.
+          - If only one hydrophone selected, sets its gcc_time to 0.
+        """
+        # collect selected indices and hydrophone objects
+        sel_indices = [i for i, s in enumerate(selected) if s and i < len(self.hydrophones)]
+        n = len(sel_indices)
+
+        # reset fields
+        for i in sel_indices:
+            h = self.hydrophones[i]
+            h.gcc_time = None
+            h.gcc_found = False
+
+        if n == 0:
+            return
+
+        if n == 1:
+            h = self.hydrophones[sel_indices[0]]
+            h.gcc_time = 0.0
+            h.gcc_found = True
+            return
+
+        # gather pairwise measurements
+        pairs = []
+        taus = []
+        for a_idx in range(n):
+            i = sel_indices[a_idx]
+            for b_idx in range(a_idx + 1, n):
+                j = sel_indices[b_idx]
+                try:
+                    tau_ij, _, _, _ = self.gcc_phat(self.hydrophones[i],
+                                                    self.hydrophones[j],
+                                                    max_tau=max_tau,
+                                                    regularization=regularization,
+                                                    polarity_insensitive=polarity_insensitive)
+                except Exception:
+                    # if a pair fails, skip it
+                    continue
+
+                # gcc_phat(h_i, h_j) returns tau = t_i - t_j (positive => i earlier than j)
+                pairs.append((i, j))
+                taus.append(float(tau_ij))
+
+        if len(pairs) == 0:
+            # no pairwise estimates available
+            return
+
+        # Build linear system A x = b where each row encodes (t_i - t_j) = tau_ij
+        m = len(pairs)
+        A = np.zeros((m, n), dtype=float)   # columns correspond to sel_indices order
+        b = np.zeros(m, dtype=float)
+
+        # map hydrophone index -> column in A
+        idx_to_col = {hp_idx: col for col, hp_idx in enumerate(sel_indices)}
+
+        for row, ((i, j), tau_val) in enumerate(zip(pairs, taus)):
+            A[row, idx_to_col[i]] = 1.0
+            A[row, idx_to_col[j]] = -1.0
+            b[row] = tau_val
+
+        # solve least squares for relative times (unique up to additive constant)
+        # t_vec solves A t_vec ≈ b
+        t_vec, *_ = np.linalg.lstsq(A, b, rcond=None)
+
+        # normalize so earliest time is zero (makes printing intuitive)
+        t_vec = t_vec - np.nanmin(t_vec)
+
+        # write back to hydrophone objects
+        for col, hp_idx in enumerate(sel_indices):
+            self.hydrophones[hp_idx].gcc_time = float(t_vec[col])
+            self.hydrophones[hp_idx].gcc_found = True
+
+    def print_gcc_toas(self):
+        """
+        Print hydrophones ordered by GCC-derived arrival times (gcc_time).
+        Hydrophones without gcc_time will be shown as N/A (gcc_found False).
+        """
+        def key_fn(item):
+            i, h = item
+            return (not getattr(h, "gcc_found", False),
+                    getattr(h, "gcc_time", float("inf")))
+
+        for i, h in sorted(enumerate(self.hydrophones), key=key_fn):
+            if getattr(h, "gcc_time", None) is not None:
+                print(f"Hydrophone {i} saw ping at {h.gcc_time:.6f}s (gcc_found={h.gcc_found})")
+            else:
+                print(f"Hydrophone {i} saw ping at N/A (gcc_found={getattr(h, 'gcc_found', False)})")
