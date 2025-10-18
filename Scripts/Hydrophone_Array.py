@@ -200,109 +200,111 @@ class Hydrophone_Array:
 
         shift_samples = lags_samples[peak_idx]
         tau = shift_samples / float(self.sampling_freq)
-
+        if h1.flip_gcc:
+            tau = tau * -1
         return tau, cc, lags_seconds, shift_samples
     
-    def estimate_selected_by_gcc(self,
-                                 selected: list[bool] = [True, True, True, True],
-                                 max_tau=None,
-                                 regularization=1e-8,
-                                 polarity_insensitive=True):
+    def estimate_selected_by_gcc(self, selected: list[bool] = [True, True, True, True], max_tau=None, regularization=1e-8, polarity_insensitive=True):
         """
-        Estimate relative arrival times for the selected hydrophones using GCC-PHAT.
-
-        Approach:
-          - Compute pairwise taus: tau_ij = estimated (t_i - t_j) from gcc_phat(h_i, h_j).
-          - Build linear system with equations t_i - t_j = tau_ij for each measured pair.
-          - Solve least-squares for t = relative times (unique up to an additive constant).
-          - Normalize so earliest time == 0 and store on each hydrophone as .gcc_time
-            and flag .gcc_found = True for hydrophones included.
-
-        Notes:
-          - Uses your existing gcc_phat implementation which will call bandpass_signal.
-          - If only one hydrophone selected, sets its gcc_time to 0.
+        For each selected hydrophone (except hydrophone 0), estimate TDOA relative to hydrophone_0 using gcc_phat.
+        Results are stored on each hydrophone object:
+            hydrophone.tdoa_gcc (seconds)
+            hydrophone.gcc_cc (cross-correlation array)
+            hydrophone.gcc_lags (lags in seconds, aligned with gcc_cc)
+            hydrophone.gcc_shift_samples (integer shift in samples)
+        Hydrophone 0 will have tdoa_gcc = 0.0.
         """
-        # collect selected indices and hydrophone objects
-        sel_indices = [i for i, s in enumerate(selected) if s and i < len(self.hydrophones)]
-        n = len(sel_indices)
+        # ensure hydrophone_0 has data (and optionally precompute bandpass on it)
+        if getattr(self.hydrophone_0, "voltages", None) is None:
+            raise RuntimeError("Hydrophone 0 has no data. Load CSV first.")
 
-        # reset fields
-        for i in sel_indices:
-            h = self.hydrophones[i]
-            h.gcc_time = None
-            h.gcc_found = False
+        # compute bandpass for hydrophone 0 once (gcc_phat will call bandpass_signal internally too)
+        # but call here explicitly to ensure peak_freq etc are set
+        self.bandpass_signal(self.hydrophone_0)
 
-        if n == 0:
-            return
+        # set hydrophone 0 fields
+        self.hydrophone_0.tdoa_gcc = 0.0
+        self.hydrophone_0.gcc_cc = None
+        self.hydrophone_0.gcc_lags = None
+        self.hydrophone_0.gcc_shift_samples = 0
 
-        if n == 1:
-            h = self.hydrophones[sel_indices[0]]
-            h.gcc_time = 0.0
-            h.gcc_found = True
-            return
+        for idx, (hydro, sel) in enumerate(zip(self.hydrophones, selected)):
+            if not sel:
+                # mark as not processed
+                hydro.tdoa_gcc = None
+                hydro.gcc_cc = None
+                hydro.gcc_lags = None
+                hydro.gcc_shift_samples = None
+                continue
 
-        # gather pairwise measurements
-        pairs = []
-        taus = []
-        for a_idx in range(n):
-            i = sel_indices[a_idx]
-            for b_idx in range(a_idx + 1, n):
-                j = sel_indices[b_idx]
-                try:
-                    tau_ij, _, _, _ = self.gcc_phat(self.hydrophones[i],
-                                                    self.hydrophones[j],
-                                                    max_tau=max_tau,
-                                                    regularization=regularization,
-                                                    polarity_insensitive=polarity_insensitive)
-                except Exception:
-                    # if a pair fails, skip it
-                    continue
+            if idx == 0:
+                # already set above
+                continue
 
-                # gcc_phat(h_i, h_j) returns tau = t_i - t_j (positive => i earlier than j)
-                pairs.append((i, j))
-                taus.append(float(tau_ij))
+            # ensure hydro has data
+            if getattr(hydro, "voltages", None) is None:
+                hydro.tdoa_gcc = None
+                hydro.gcc_cc = None
+                hydro.gcc_lags = None
+                hydro.gcc_shift_samples = None
+                continue
 
-        if len(pairs) == 0:
-            # no pairwise estimates available
-            return
+            # call gcc_phat with hydrophone_0 as reference and hydro as other
+            try:
+                tau, cc, lags_seconds, shift_samples = self.gcc_phat(self.hydrophone_0, hydro, max_tau=max_tau, regularization=regularization, polarity_insensitive=polarity_insensitive)
+            except Exception as e:
+                # propagate useful info on failure but keep other hydrophones processed
+                hydro.tdoa_gcc = None
+                hydro.gcc_cc = None
+                hydro.gcc_lags = None
+                hydro.gcc_shift_samples = None
+                print(f"gcc_phat failed for hydrophone {idx}: {e}")
+                continue
 
-        # Build linear system A x = b where each row encodes (t_i - t_j) = tau_ij
-        m = len(pairs)
-        A = np.zeros((m, n), dtype=float)   # columns correspond to sel_indices order
-        b = np.zeros(m, dtype=float)
+            # store results on hydrophone object
+            hydro.tdoa_gcc = float(tau)
+            hydro.gcc_cc = cc
+            hydro.gcc_lags = lags_seconds
+            hydro.gcc_shift_samples = int(shift_samples)
 
-        # map hydrophone index -> column in A
-        idx_to_col = {hp_idx: col for col, hp_idx in enumerate(sel_indices)}
-
-        for row, ((i, j), tau_val) in enumerate(zip(pairs, taus)):
-            A[row, idx_to_col[i]] = 1.0
-            A[row, idx_to_col[j]] = -1.0
-            b[row] = tau_val
-
-        # solve least squares for relative times (unique up to additive constant)
-        # t_vec solves A t_vec ≈ b
-        t_vec, *_ = np.linalg.lstsq(A, b, rcond=None)
-
-        # normalize so earliest time is zero (makes printing intuitive)
-        t_vec = t_vec - np.nanmin(t_vec)
-
-        # write back to hydrophone objects
-        for col, hp_idx in enumerate(sel_indices):
-            self.hydrophones[hp_idx].gcc_time = float(t_vec[col])
-            self.hydrophones[hp_idx].gcc_found = True
-
-    def print_gcc_toas(self):
+    def print_gcc_TDOA(self, selected: list[bool] = [True, True, True, True], indent: str = "  "):
         """
-        Print hydrophones ordered by GCC-derived arrival times (gcc_time).
-        Hydrophones without gcc_time will be shown as N/A (gcc_found False).
+        Print TDOA results computed by estimate_selected_by_gcc for each hydrophone,
+        always relative to hydrophone 0. If a hydrophone wasn't computed (tdoa_gcc is None)
+        a 'N/A' is printed.
         """
-        def key_fn(item):
-            i, h = item
-            return (not getattr(h, "gcc_found", False),
-                    getattr(h, "gcc_time", float("inf")))
+        print("GCC-PHAT TDOA relative to Hydrophone 0")
+        print("-" * 48)
+        print(f"{'Hydrophone':<12}{'Selected':<10}{'TDOA (s)':<14}{'Shift (samples)':<16}{'Interpretation'}")
+        print("-" * 48)
 
-        for i, h in sorted(enumerate(self.hydrophones), key=key_fn):
-            if getattr(h, "gcc_time", None) is not None:
-                print(f"Hydrophone {i} saw ping at {h.gcc_time:.6f}s (gcc_found={h.gcc_found})")
+        for idx, (hydro, sel) in enumerate(zip(self.hydrophones, selected)):
+            selected_str = "Yes" if sel else "No"
+            tdoa = getattr(hydro, "tdoa_gcc", None)
+            shift = getattr(hydro, "gcc_shift_samples", None)
+
+            if tdoa is None:
+                tdoa_str = "N/A"
             else:
-                print(f"Hydrophone {i} saw ping at N/A (gcc_found={getattr(h, 'gcc_found', False)})")
+                tdoa_str = f"{tdoa:+.6e}"  # show sign (+/-)
+
+            if shift is None:
+                shift_str = "N/A"
+            else:
+                shift_str = f"{shift}"
+
+            # Interpretation: which hydrophone saw the ping first?
+            if tdoa is None:
+                interp = "no estimate"
+            else:
+                # tdoa = tau where positive means hydrophone is delayed relative to hydrophone_0 (hydrophone sees ping later)
+                if idx == 0 or abs(tdoa) < 1e-12:
+                    interp = "same time (reference)"
+                elif tdoa > 0:
+                    interp = f"Hydrophone 0 leads by {tdoa:.6e}s"
+                else:
+                    interp = f"Hydrophone {idx} leads by {abs(tdoa):.6e}s"
+
+            print(f"{idx:<12}{selected_str:<10}{tdoa_str:<14}{shift_str:<16}{interp}")
+
+        print("-" * 48)
