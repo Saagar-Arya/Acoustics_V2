@@ -1,16 +1,20 @@
 import saleae
 import time
 import os 
+import numpy as np
+from Hydrophone import Hydrophone
+from read_files import parse_analog, AnalogData
+import pandas as pd
 
 class Logic():
-    def __init__(self):
+    def __init__(self, sampling_freq: int=781250):
         self.LAUNCH_TIMEOUT = 15
         self.QUIET = False
         self.PORT = 10429
         self.HOST = 'localhost'
         self.LOGIC_PATH = "Logic-1.2.40-Windows/Logic-1.2.40/Logic.exe"
         self.DEVICE_SELECTION = 1    # 0 for LOGIC PRO 16, 1 for LOGIC 8, 2 for LOGIC PRO 8
-        self.SAMPLING_FREQ = 781250
+        self.SAMPLING_FREQ = sampling_freq
         self.H0_CHANNEL = 0
         self.H1_CHANNEL = 1
         self.H2_CHANNEL = 2
@@ -53,3 +57,38 @@ class Logic():
         while(not self.s.is_processing_complete()):
             time.sleep(0.5)
         return csv_path
+    
+def read_binary(filename: str, prev_hydrophone: Hydrophone=None) -> Hydrophone:
+    with open(filename, 'rb') as f:
+        result = parse_analog(f)
+    times = np.array(range(result.num_samples)) / result.sample_rate + result.begin_time
+    time_series = result.samples
+
+    hyd = Hydrophone() if prev_hydrophone is None else prev_hydrophone
+
+    hyd.times = times
+    hyd.voltages = time_series
+    return hyd
+
+def read_csv(path: str, prev_hydrophones: list[Hydrophone]=None) -> list[Hydrophone]:
+    skip_rows = 0
+    with open(path, 'r') as f:
+        for i, line in enumerate(f):
+            parts = line.strip().split(',')
+            try:
+                float(parts[0])
+                skip_rows = i
+                break
+            except ValueError:
+                continue
+
+    data = pd.read_csv(path, skiprows=skip_rows, header=None)
+    
+    times = data.iloc[:, 0].to_numpy()
+    num_hydrophones = data.shape[1] - 1
+    hydrophones = [Hydrophone() for _ in range(num_hydrophones)] if prev_hydrophones is None else prev_hydrophones
+    for idx in range (0,len(hydrophones)):
+        hydrophones[idx].times = times
+        hydrophones[idx].voltages = data.iloc[:, idx+1].to_numpy()
+    return hydrophones
+

@@ -3,12 +3,13 @@ import matplotlib.pyplot as plt
 import time
 import Logic as LOGIC
 import Hydrophone_Array as Hydrophone_Array
+from Scripts.Hydrophone import HydrophoneConfig
 
 # folder = time.strftime('%Y-%m-%d--%H-%M-%S')
 # path = os.path.join("Scripts",folder)
 # os.mkdir(path)
 
-# logic = LOGIC.Logic()
+# logic = LOGIC.Logic(sampling_freq=sampling_freq)
 # logic.print_saleae_status()
 # csv_path = logic.start_capture(2,path)
 # logic.kill_logic()
@@ -19,12 +20,16 @@ import Hydrophone_Array as Hydrophone_Array
 csv_path = "Scripts/2025-10-09--18-43-46_0-1/SAMPLE.csv"
 #csv_path = "Scripts/2025-10-09--18-47-46_0-1/SAMPLE.csv"
 
-hydrophone_array = Hydrophone_Array.Hydrophone_Array()
-hydrophone_array.hydrophone_1.flip_gcc = True
-hydrophone_array.hydrophone_2.flip_gcc = False
-hydrophone_array.hydrophone_3.flip_gcc = False
+configs = [
+    HydrophoneConfig(flip_gcc=False),
+    HydrophoneConfig(flip_gcc=True),
+    HydrophoneConfig(flip_gcc=False),
+    HydrophoneConfig(flip_gcc=False),
+]
 
-hydrophone_array.csv_to_np(csv_path)
+hydrophone_array = Hydrophone_Array.Hydrophone_Array()
+hydrophone_array.set_hydrophone_config(configs)
+hydrophone_array.update_from_csv(csv_path)
 
 selected = [True, True, False, False]
 hydrophone_array.estimate_selected_by_envelope(selected)
