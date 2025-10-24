@@ -12,5 +12,10 @@ python src/nn_predict.py --ckpt artifacts/hydrophone_model.pt --csv data/nn_samp
 
 ### Read in Binary Files
 #### Create executable (C++)
-g++ -std=c++17 -O2 src/read_bin_data.cpp -o readbin.exe
+Create .exe file
+- g++ -std=c++17 -O2 src\read_bin_data.cpp -o read_bin.exe
+
+Read a given analog file
+- read_bin.exe data\analog_0.bin
+- 
 - TODO: Fix timing, currently time values are slightly off from true time
