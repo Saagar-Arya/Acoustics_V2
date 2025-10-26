@@ -15,11 +15,14 @@ class Hydrophone:
     envelope: Optional[np.ndarray] = None
     found_peak: bool = False
 
-    # GCC-PHAT results
-    tdoa_gcc: Optional[float] = None
-    gcc_shift_samples: Optional[int] = None
-    gcc_cc: Optional[np.ndarray] = None
-    gcc_lags: Optional[np.ndarray] = None
+    def reset(self):
+        self.times = None
+        self.voltages = None
 
-    # --- NEW: configuration ---
-    flip_gcc: bool = False    # if True, invert polarity before GCC
+        self.toa_index = None
+        self.toa_time = None
+        self.toa_peak = None
+        self.peak_freq = None
+        self.filtered_signal = None
+        self.envelope = None
+        self.found_peak = False

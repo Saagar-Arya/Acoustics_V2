@@ -3,14 +3,14 @@ import time
 import os 
 
 class Logic():
-    def __init__(self):
+    def __init__(self, sampling_freq = 781250):
         self.LAUNCH_TIMEOUT = 15
         self.QUIET = False
         self.PORT = 10429
         self.HOST = 'localhost'
         self.LOGIC_PATH = "Logic-1.2.40-Windows/Logic-1.2.40/Logic.exe"
         self.DEVICE_SELECTION = 1    # 0 for LOGIC PRO 16, 1 for LOGIC 8, 2 for LOGIC PRO 8
-        self.SAMPLING_FREQ = 781250
+        self.SAMPLING_FREQ = sampling_freq
         self.H0_CHANNEL = 0
         self.H1_CHANNEL = 1
         self.H2_CHANNEL = 2
@@ -46,7 +46,7 @@ class Logic():
         print(f"DEBUG: ANALYZERS: {self.s.get_analyzers()}")  
         
     def start_capture(self, seconds, output_dir):
-        csv_path = os.path.join(output_dir,"SAMPLE.csv")
+        csv_path = os.path.join(output_dir,"TEMP.csv")
         self.s.set_capture_seconds(seconds)
         self.s.capture_start_and_wait_until_finished()
         self.s.export_data2(file_path_on_target_machine=csv_path, format='csv')
