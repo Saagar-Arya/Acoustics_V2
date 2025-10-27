@@ -4,6 +4,8 @@ import numpy as np
 from scipy.fft import fft, ifft, fftfreq
 import matplotlib.pyplot as plt
 import Hydrophone
+import os 
+import csv 
 
 class Hydrophone_Array:
     def __init__(
@@ -12,6 +14,9 @@ class Hydrophone_Array:
         search_band_min:float=25000,
         search_band_max:float=40000, 
         bandwidth:float=100.0,
+        data_collection:bool=False,
+        data_collection_path:str="",
+        data_collection_target:int = 0
     ):
         self.search_band_min = search_band_min
         self.search_band_max = search_band_max
@@ -27,7 +32,19 @@ class Hydrophone_Array:
 
         self.threshold_factor = 0.3
 
+        self.data_collection = data_collection
+        self.data_collection_path = data_collection_path
+        self.data_collection_target = data_collection_target
+        self.headers = ["Target_Hydrophone", "Earliest_Hydrophone_TOA","Hydrophone_0_TOA",
+            "Hydrophone_1_TOA","Hydrophone_2_TOA","Hydrophone_3_TOA"]
+        
+        if(self.data_collection):
+            self.data_collection_setup()
+    
     def csv_to_np (self, path: str):
+        # reset hydrophones when getting new data
+        self.reset_selected()
+
         skip_rows = 0
         with open(path, 'r') as f:
             for i, line in enumerate(f):
@@ -125,10 +142,6 @@ class Hydrophone_Array:
                             
     def estimate_by_envelope(self, hydrophone:Hydrophone.Hydrophone):
         self.bandpass_signal(hydrophone)
-        hydrophone.toa_idx = None
-        hydrophone.toa_time = None
-        hydrophone.toa_peak = None
-        hydrophone.envelope = None
 
         if (hydrophone.times is None or hydrophone.voltages is None):
             raise RuntimeError("Load data first with from_csv() or from_arrays().")
@@ -152,159 +165,33 @@ class Hydrophone_Array:
         for hydrophone, s in zip(self.hydrophones, selected):
             if s:
                 self.estimate_by_envelope(hydrophone)
-
-    def gcc_phat(self, h0, h1, max_tau=None, regularization=1e-8, polarity_insensitive=True):
-        self.bandpass_signal(h0)
-        self.bandpass_signal(h1)
-
-        # ensure zero-mean and apply window
-        h0.filtered_signal = h0.filtered_signal - np.mean(h0.filtered_signal)
-        h1.filtered_signal = h1.filtered_signal - np.mean(h1.filtered_signal)
-
-        winh0 = np.hanning(h0.filtered_signal.size)
-        winh1 = np.hanning(h1.filtered_signal.size)
-        h0w = h0.filtered_signal * winh0
-        h1w = h1.filtered_signal * winh1
-
-        # FFT length (>= len(x)+len(y)), use next power of two
-        n = h0w.size + h1w.size
-        nfft = 1 << int(np.ceil(np.log2(n)))
-
-        # compute cross-spectrum and PHAT-normalize
-        SIG = np.fft.rfft(h0w, n=nfft)
-        REFSIG = np.fft.rfft(h1w, n=nfft)
-        R = SIG * np.conj(REFSIG)
-
-        denom = np.abs(R)
-        denom = denom + regularization * np.max(denom)
-        R_phat = R / denom
-
-        cc_full = np.fft.irfft(R_phat, n=nfft)
-
-        # determine max_shift in samples around center
-        max_shift = int(nfft // 2)
-        if max_tau is not None:
-            # limit by user-provided maximum lag (in seconds)
-            max_shift = min(int(self.sampling_freq * float(max_tau)), max_shift)
-
-        # center around zero lag
-        cc = np.concatenate((cc_full[-max_shift:], cc_full[:max_shift + 1]))
-        lags_samples = np.arange(-max_shift, max_shift + 1)
-        lags_seconds = lags_samples / float(self.sampling_freq)
-
-        # find peak (optionally polarity-insensitive)
-        if polarity_insensitive:
-            peak_idx = np.argmax(np.abs(cc))
-        else:
-            peak_idx = np.argmax(cc)
-
-        shift_samples = lags_samples[peak_idx]
-        tau = shift_samples / float(self.sampling_freq)
-        if h1.flip_gcc:
-            tau = tau * -1
-        return tau, cc, lags_seconds, shift_samples
     
-    def estimate_selected_by_gcc(self, selected: list[bool] = [True, True, True, True], max_tau=None, regularization=1e-8, polarity_insensitive=True):
-        """
-        For each selected hydrophone (except hydrophone 0), estimate TDOA relative to hydrophone_0 using gcc_phat.
-        Results are stored on each hydrophone object:
-            hydrophone.tdoa_gcc (seconds)
-            hydrophone.gcc_cc (cross-correlation array)
-            hydrophone.gcc_lags (lags in seconds, aligned with gcc_cc)
-            hydrophone.gcc_shift_samples (integer shift in samples)
-        Hydrophone 0 will have tdoa_gcc = 0.0.
-        """
-        # ensure hydrophone_0 has data (and optionally precompute bandpass on it)
-        if getattr(self.hydrophone_0, "voltages", None) is None:
-            raise RuntimeError("Hydrophone 0 has no data. Load CSV first.")
+    def reset_selected(self, selected: list[bool] = [True,True,True,True]):
+        for hydrophone, s in zip(self.hydrophones, selected):
+            if s:
+                hydrophone.reset()
+    
+    def data_collection_setup(self):
+        os.makedirs(os.path.dirname(self.data_collection_path), exist_ok=True)
 
-        # compute bandpass for hydrophone 0 once (gcc_phat will call bandpass_signal internally too)
-        # but call here explicitly to ensure peak_freq etc are set
-        self.bandpass_signal(self.hydrophone_0)
+        with open(self.data_collection_path, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(self.headers)
+        
+        print(f"Data Collection CSV file created at {self.data_collection_path} with headers: {self.headers}")
 
-        # set hydrophone 0 fields
-        self.hydrophone_0.tdoa_gcc = 0.0
-        self.hydrophone_0.gcc_cc = None
-        self.hydrophone_0.gcc_lags = None
-        self.hydrophone_0.gcc_shift_samples = 0
+    def data_collection_envelope(self):
+        row_data = [self.data_collection_target]
+        
+        sorted_toa = sorted(
+            enumerate(self.hydrophones),
+            key=lambda ih: (not ih[1].found_peak, ih[1].toa_time if ih[1].toa_time is not None else float('inf'))
+        )
 
-        for idx, (hydro, sel) in enumerate(zip(self.hydrophones, selected)):
-            if not sel:
-                # mark as not processed
-                hydro.tdoa_gcc = None
-                hydro.gcc_cc = None
-                hydro.gcc_lags = None
-                hydro.gcc_shift_samples = None
-                continue
+        row_data.append(sorted_toa[0][0]) # appends which hydrophone came first
+        print("SORTED TOA ",sorted_toa[0][0])
+        row_data = row_data + [self.hydrophone_0.toa_time,self.hydrophone_1.toa_time,self.hydrophone_2.toa_time,self.hydrophone_3.toa_time,]
 
-            if idx == 0:
-                # already set above
-                continue
-
-            # ensure hydro has data
-            if getattr(hydro, "voltages", None) is None:
-                hydro.tdoa_gcc = None
-                hydro.gcc_cc = None
-                hydro.gcc_lags = None
-                hydro.gcc_shift_samples = None
-                continue
-
-            # call gcc_phat with hydrophone_0 as reference and hydro as other
-            try:
-                tau, cc, lags_seconds, shift_samples = self.gcc_phat(self.hydrophone_0, hydro, max_tau=max_tau, regularization=regularization, polarity_insensitive=polarity_insensitive)
-            except Exception as e:
-                # propagate useful info on failure but keep other hydrophones processed
-                hydro.tdoa_gcc = None
-                hydro.gcc_cc = None
-                hydro.gcc_lags = None
-                hydro.gcc_shift_samples = None
-                print(f"gcc_phat failed for hydrophone {idx}: {e}")
-                continue
-
-            # store results on hydrophone object
-            hydro.tdoa_gcc = float(tau)
-            hydro.gcc_cc = cc
-            hydro.gcc_lags = lags_seconds
-            hydro.gcc_shift_samples = int(shift_samples)
-
-    def print_gcc_TDOA(self, selected: list[bool] = [True, True, True, True], indent: str = "  "):
-        """
-        Print TDOA results computed by estimate_selected_by_gcc for each hydrophone,
-        always relative to hydrophone 0. If a hydrophone wasn't computed (tdoa_gcc is None)
-        a 'N/A' is printed.
-        """
-        print("GCC-PHAT TDOA relative to Hydrophone 0")
-        print("-" * 48)
-        print(f"{'Hydrophone':<12}{'Selected':<10}{'TDOA (s)':<14}{'Shift (samples)':<16}{'Interpretation'}")
-        print("-" * 48)
-
-        for idx, (hydro, sel) in enumerate(zip(self.hydrophones, selected)):
-            selected_str = "Yes" if sel else "No"
-            tdoa = getattr(hydro, "tdoa_gcc", None)
-            shift = getattr(hydro, "gcc_shift_samples", None)
-
-            if tdoa is None:
-                tdoa_str = "N/A"
-            else:
-                tdoa_str = f"{tdoa:+.6e}"  # show sign (+/-)
-
-            if shift is None:
-                shift_str = "N/A"
-            else:
-                shift_str = f"{shift}"
-
-            # Interpretation: which hydrophone saw the ping first?
-            if tdoa is None:
-                interp = "no estimate"
-            else:
-                # tdoa = tau where positive means hydrophone is delayed relative to hydrophone_0 (hydrophone sees ping later)
-                if idx == 0 or abs(tdoa) < 1e-12:
-                    interp = "same time (reference)"
-                elif tdoa > 0:
-                    interp = f"Hydrophone 0 leads by {tdoa:.6e}s"
-                else:
-                    interp = f"Hydrophone {idx} leads by {abs(tdoa):.6e}s"
-
-            print(f"{idx:<12}{selected_str:<10}{tdoa_str:<14}{shift_str:<16}{interp}")
-
-        print("-" * 48)
+        with open(self.data_collection_path, mode='a', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(row_data)
