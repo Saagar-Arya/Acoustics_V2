@@ -27,21 +27,20 @@ hydrophone_array = Hydrophone_Array.HydrophoneArray(
 
 num_samples = 5
 for i in range(num_samples):
-    csv_path = logic.start_capture(2, path)
+    #csv_path = logic.start_capture(2, path)
+    csv_path = "Scripts/2025-10-09--18-43-46_0-1/SAMPLE.csv"
 
     hydrophone_array.load_from_csv(csv_path)
 
     hydrophone_array.estimate_selected_by_envelope(SELECTED)
-
-    # hydrophone_array.plot_selected_envelope(SELECTED)
     hydrophone_array.print_envelope_toas()
-    print("//----------------------")
+    print("=" * 30)
 
-    # hydrophone_array.estimate_selected_by_gcc(SELECTED)  # compute GCC TDOAs (relative to hydrophone_0)
-    # hydrophone_array.print_gcc_tdoa(SELECTED)
-    # print("//----------------------")
+    hydrophone_array.estimate_selected_by_gcc(SELECTED)
+    hydrophone_array.print_gcc_tdoa(SELECTED)
+    print("=" * 30)
 
-    hydrophone_array.append_envelope_data()
+    hydrophone_array.append_combined_data()
 
 logic.kill_logic()
 
