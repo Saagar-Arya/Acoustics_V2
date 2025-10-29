@@ -53,3 +53,23 @@ class Logic():
         while(not self.s.is_processing_complete()):
             time.sleep(0.5)
         return csv_path
+    
+    def export_binary_channel(self, output_dir, analog_format: str = "voltage"):
+        """
+        Export current capture to binary files, one .bin per active analog channel.
+        Returns a list of file paths in channel order.
+        Naming: TEMP_A{ch}.bin
+        """
+        bin_paths = []
+        analog_channels = self.s.get_active_channels()
+
+        for ch in analog_channels:
+            bin_path = os.path.join(output_dir, f"TEMP_A{ch}.bin")
+            
+            self.s.export_data2(file_path_on_target_machine=str(bin_path), format='binary', analog_channels=[ch])
+            while not self.s.is_processing_complete():
+                time.sleep(0.5) # Make sure processing is complete before we do anything else
+
+            bin_paths.append(bin_path)
+
+        return bin_paths
