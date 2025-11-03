@@ -1,6 +1,7 @@
 import saleae
 import time
 import os 
+import sys
 
 class Logic():
     def __init__(self, sampling_freq = 781250):
@@ -8,7 +9,17 @@ class Logic():
         self.QUIET = False
         self.PORT = 10429
         self.HOST = 'localhost'
-        self.LOGIC_PATH = "Logic-1.2.40-Windows/Logic-1.2.40/Logic.exe"
+
+        if sys.platform == "win32":
+            self.LOGIC_PATH = "Logic-1.2.40-Windows/Logic-1.2.40/Logic.exe"
+        elif sys.platform == "darwin":
+            self.LOGIC_PATH = "Logic-1.2.40-MacOS.dmg"
+        elif sys.platform == "linux":
+            print("Running on Linux")
+        else:
+            print(f"Unknown OS: {sys.platform}")
+
+        
         self.DEVICE_SELECTION = 1    # 0 for LOGIC PRO 16, 1 for LOGIC 8, 2 for LOGIC PRO 8
         self.SAMPLING_FREQ = sampling_freq
         self.H0_CHANNEL = 0
