@@ -54,7 +54,7 @@ class Logic():
             time.sleep(0.5)
         return csv_path
     
-    def export_binary_channel(self, output_dir, analog_format: str = "voltage"):
+    def export_binary_channel(self, output_dir):
         """
         Export current capture to binary files, one .bin per active analog channel.
         Returns a list of file paths in channel order.

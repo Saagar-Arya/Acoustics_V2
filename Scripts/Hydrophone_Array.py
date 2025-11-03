@@ -82,6 +82,78 @@ class HydrophoneArray:
             hydrophone.times = times
             hydrophone.voltages = data.iloc[:, idx + 1].to_numpy()
 
+    # Goal: Load time-voltage data from a binary file into hydrophone array
+    # How: Detects and skips header rows, then populates each hydrophone with time and voltage data
+    # Return: None (modifies hydrophone objects in place)
+    def load_from_bin(self, folder) -> None:
+        import struct
+
+        self.reset_selected()
+        
+        # Find all analog_*.bin files
+        channels = []
+        for i in range(len(self.hydrophones)):
+            fname = os.path.join(folder, f"analog_{i}.bin")
+            if os.path.exists(fname):
+                channels.append(i)
+        
+        if not channels:
+            raise FileNotFoundError(f"No analog_*.bin files found in {folder}")
+        
+            # Read all channels and extract timing info
+        arrays = []
+        sampling_freqs = []
+        begin_times = []
+        min_len = None
+    
+        for ch in channels:
+            path = os.path.join(folder, f"analog_{ch}.bin")
+            
+            with open(path, 'rb') as f:
+                # Parse Saleae Logic 2 header
+                magic = f.read(8)
+                if magic != b'<SALEAE>':
+                    raise ValueError(f"Invalid Saleae file format in {path}")
+                
+                version = struct.unpack('I', f.read(4))[0]
+                channel_type = struct.unpack('I', f.read(4))[0] 
+
+                # Analog channel header
+                begin_time = struct.unpack('d', f.read(8))[0]      # Start time in seconds
+                sample_rate = struct.unpack('d', f.read(8))[0]     # Sampling rate in Hz
+                downsample = struct.unpack('d', f.read(8))[0]      # Downsample factor
+                num_samples = struct.unpack('I', f.read(4))[0]     # Number of samples
+                
+                # Read voltage data (float32 array)
+                data = np.fromfile(f, dtype='float32', count=num_samples)
+            
+            if sample_rate == 0:
+                raise ValueError(f"Invalid sample rate (0 Hz) in {path}")
+            
+            sampling_freqs.append(sample_rate)
+            begin_times.append(begin_time)
+            
+            if min_len is None or len(data) < min_len:
+                min_len = len(data)
+            arrays.append(data)
+            
+            # Use the sampling frequency from the file
+            actual_sampling_freq = sampling_freqs[0]
+            begin_time = begin_times[0]
+            
+            # Truncate to the shortest length for alignment
+            arrays = [a[:min_len] for a in arrays]
+            
+            # Create time array starting from begin_time
+            times = begin_time + np.arange(min_len) / actual_sampling_freq
+            
+            # Assign time and voltage arrays to hydrophones
+            for idx, hydrophone in enumerate(self.hydrophones):
+                if idx < len(arrays):
+                    hydrophone.times = times
+                    hydrophone.voltages = arrays[idx]
+                else:
+                    hydrophone.reset()
 
     # Goal: Normalize selection mask to match hydrophone array length
     # How: Returns all-True mask if None, otherwise adjusts mask length to match hydrophone count
