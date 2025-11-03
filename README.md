@@ -2,6 +2,19 @@
 First draft of acoustics processing.
 To be transferred to primary robotics repo at a later date.
 
+## One - Time SETUP (ONLY SUPPORTING MAC + WINDOWS rn)
+Clone Repo
+Open Saleae standalone
+--> Click Options drop down in top right corner
+--> Click Preferences
+--> Click Developer Tab
+--> Click Option to Enable Scripting Socket Server
+
+https://support.saleae.com/product/logic-software/legacy-software/older-software-releases
+./Logic-1.2.40-Linux.AppImage --appimage-extract
+
+Create a new python enviornment and download requirements.txt
+
 ## Running Files
 ### Neural Network
 #### Train Data
