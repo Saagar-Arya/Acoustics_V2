@@ -90,15 +90,20 @@ class HydrophoneArray:
     def load_from_bin(self, folder: str) -> None:
         self.reset_selected()
 
+        # Sampling frequency fallback if not set on the instance
         fs = getattr(self, "sampling_freq", 1_250_000.0)
+
+        # Collect all per-channel binary files (e.g., TEMP_A0.bin, TEMP_A1.bin, …)
         files = sorted(glob.glob(os.path.join(folder, "TEMP_A*.bin")))
         if not files:
             raise FileNotFoundError(f"No TEMP_A*.bin files in {folder}")
 
+        # Inner reader: parse one Saleae binary file and return (begin_time, sample_rate, samples)
         def _read_one(p, _fs):
             with open(p, "rb") as f:
                 h = f.read(8)
                 if h == b"<SALEAE>":
+                    # New-format header with metadata (different types of saleae logic binary files exist)
                     struct.unpack("<I", f.read(4))      # version
                     struct.unpack("<I", f.read(4))      # type
                     bt = struct.unpack("<d", f.read(8))[0]
@@ -107,23 +112,28 @@ class HydrophoneArray:
                     n = struct.unpack("<I", f.read(4))[0]
                     x = np.fromfile(f, dtype="<f4", count=n)
                     return bt, sr, x
+                
+                # Legacy/simple variant: first 8 bytes are sample count (uint64), then 8 bytes reserved
                 n = struct.unpack("<Q", h)[0]
                 f.read(8)                               # skip two uint32
                 x = np.fromfile(f, dtype="<f4", count=n)
                 return 0.0, _fs, x
 
+        # Read the first channel to establish timeline and reference length
         bt, fs0, x0 = _read_one(files[0], fs)
         n = len(x0)
+        # Construct absolute time vector using file begin time and sample rate
         t = bt + np.arange(n, dtype=np.float64) / fs0
         self.hydrophones[0].times = t
         self.hydrophones[0].voltages = x0
 
+        # Read remaining channels; align by trimming to the first channel's length
         for i, p in enumerate(files[1:], start=1):
             _, _, xi = _read_one(p, fs0)
             xi = xi[:n]
             self.hydrophones[i].times = t[:len(xi)]
             self.hydrophones[i].voltages = xi
-
+        # If there are more hydrophone objects than files, clear the extras
         for j in range(len(files), len(self.hydrophones)):
             self.hydrophones[j].reset()
 
