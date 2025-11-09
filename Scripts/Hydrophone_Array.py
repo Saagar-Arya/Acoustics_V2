@@ -102,16 +102,18 @@ class HydrophoneArray:
         def _read_one(p, _fs):
             with open(p, "rb") as f:
                 h = f.read(8)
-                if h == b"<SALEAE>":
-                    # New-format header with metadata (different types of saleae logic binary files exist)
-                    struct.unpack("<I", f.read(4))      # version
-                    struct.unpack("<I", f.read(4))      # type
-                    bt = struct.unpack("<d", f.read(8))[0]
-                    sr = struct.unpack("<d", f.read(8))[0]
-                    struct.unpack("<d", f.read(8))      # downsample
-                    n = struct.unpack("<I", f.read(4))[0]
-                    x = np.fromfile(f, dtype="<f4", count=n)
-                    return bt, sr, x
+                # NOTE: IF CODE STOPS WORKING, UNCOMMENT THIS BECAUSE THE ISSUE MIGHT BE THAT THE BINARY FILE IS IN A NEW VERSION
+                # if h == b"<SALEAE>":
+                #     print("new format")
+                #     # New-format header with metadata (different types of saleae logic binary files exist)
+                #     struct.unpack("<I", f.read(4))      # version
+                #     struct.unpack("<I", f.read(4))      # type
+                #     bt = struct.unpack("<d", f.read(8))[0]
+                #     sr = struct.unpack("<d", f.read(8))[0]
+                #     struct.unpack("<d", f.read(8))      # downsample
+                #     n = struct.unpack("<I", f.read(4))[0]
+                #     x = np.fromfile(f, dtype="<f4", count=n)
+                #     return bt, sr, x
                 
                 # Legacy/simple variant: first 8 bytes are sample count (uint64), then 8 bytes reserved
                 n = struct.unpack("<Q", h)[0]
