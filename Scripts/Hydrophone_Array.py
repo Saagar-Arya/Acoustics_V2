@@ -94,7 +94,7 @@ class HydrophoneArray:
             hydrophone.voltages = data.iloc[:, idx + 1].to_numpy()
 
     # Goal: Load time-voltage data from a binary file into hydrophone array
-    # How: Detects and skips header rows, then populates each hydrophone with time and voltage data
+    # How: Parses binary header to extract sample count, then reads voltage samples for each hydrophone channel
     # Return: None
     def load_from_bin(self, path: str) -> None:
         self.reset_selected()
