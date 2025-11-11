@@ -12,8 +12,6 @@ from scipy.fft import fft, ifft, fftfreq
 
 import Hydrophone
 import struct
-import glob
-
 
 class HydrophoneArray:
     """Manages an array of hydrophones with signal processing and time-of-arrival detection capabilities."""
@@ -60,9 +58,20 @@ class HydrophoneArray:
         if self.data_collection:
             self._setup_data_collection()
 
+    # Goal: Load time-voltage data from a file into hydrophone array
+    # Return: None
+    def load_from_path(self, path: str)-> None:
+        ext = os.path.splitext(path)[1].lower()
+        if ext == ".bin":
+            return self.load_from_bin(path)
+        elif ext == ".csv":
+            return self.load_from_csv(path)
+        else:
+            raise ValueError(f"Unsupported file type: {ext}. Expected .bin or .csv")
+        
     # Goal: Load time-voltage data from a CSV file into hydrophone array
     # How: Detects and skips header rows, then populates each hydrophone with time and voltage data
-    # Return: None (modifies hydrophone objects in place)
+    # Return: None
     def load_from_csv(self, path: str) -> None:
         self.reset_selected()
 
@@ -86,58 +95,26 @@ class HydrophoneArray:
 
     # Goal: Load time-voltage data from a binary file into hydrophone array
     # How: Detects and skips header rows, then populates each hydrophone with time and voltage data
-    # Return: None (modifies hydrophone objects in place)
-    def load_from_bin(self, folder: str) -> None:
+    # Return: None
+    def load_from_bin(self, path: str) -> None:
         self.reset_selected()
 
-        # Sampling frequency fallback if not set on the instance
-        fs = getattr(self, "sampling_freq", 1_250_000.0)
+        with open(path, "rb") as f:
+            # Read header: 8 bytes uint64, 4 bytes uint32, 8 bytes double (little-endian)
+            header = f.read(8 + 4 + 8)
+            num_samples, num_channels, sample_period = struct.unpack("<QId", header)
 
-        # Collect all per-channel binary files (e.g., TEMP_A0.bin, TEMP_A1.bin, …)
-        files = sorted(glob.glob(os.path.join(folder, "TEMP_A*.bin")))
-        if not files:
-            raise FileNotFoundError(f"No TEMP_A*.bin files in {folder}")
+            # read all float32 samples
+            total_floats = num_samples * num_channels
+            float_bytes = f.read(total_floats * 4)
+            data = np.frombuffer(float_bytes, dtype="<f4")  # little-endian float32
+            data = data.reshape((num_channels, num_samples))
 
-        # Inner reader: parse one Saleae binary file and return (begin_time, sample_rate, samples)
-        def _read_one(p, _fs):
-            with open(p, "rb") as f:
-                h = f.read(8)
-                # NOTE: IF CODE STOPS WORKING, UNCOMMENT THIS BECAUSE THE ISSUE MIGHT BE THAT THE BINARY FILE IS IN A NEW VERSION
-                # if h == b"<SALEAE>":
-                #     print("new format")
-                #     # New-format header with metadata (different types of saleae logic binary files exist)
-                #     struct.unpack("<I", f.read(4))      # version
-                #     struct.unpack("<I", f.read(4))      # type
-                #     bt = struct.unpack("<d", f.read(8))[0]
-                #     sr = struct.unpack("<d", f.read(8))[0]
-                #     struct.unpack("<d", f.read(8))      # downsample
-                #     n = struct.unpack("<I", f.read(4))[0]
-                #     x = np.fromfile(f, dtype="<f4", count=n)
-                #     return bt, sr, x
-                
-                # Legacy/simple variant: first 8 bytes are sample count (uint64), then 8 bytes reserved
-                n = struct.unpack("<Q", h)[0]
-                f.read(8)                               # skip two uint32
-                x = np.fromfile(f, dtype="<f4", count=n)
-                return 0.0, _fs, x
-
-        # Read the first channel to establish timeline and reference length
-        bt, fs0, x0 = _read_one(files[0], fs)
-        n = len(x0)
-        # Construct absolute time vector using file begin time and sample rate
-        t = bt + np.arange(n, dtype=np.float64) / fs0
-        self.hydrophones[0].times = t
-        self.hydrophones[0].voltages = x0
-
-        # Read remaining channels; align by trimming to the first channel's length
-        for i, p in enumerate(files[1:], start=1):
-            _, _, xi = _read_one(p, fs0)
-            xi = xi[:n]
-            self.hydrophones[i].times = t[:len(xi)]
-            self.hydrophones[i].voltages = xi
-        # If there are more hydrophone objects than files, clear the extras
-        for j in range(len(files), len(self.hydrophones)):
-            self.hydrophones[j].reset()
+        # Create time base
+        times = np.arange(num_samples, dtype=np.float64) * sample_period
+        for idx, hydrophone in enumerate(self.hydrophones):
+            hydrophone.times = times
+            hydrophone.voltages = data[idx]
 
     # Goal: Normalize selection mask to match hydrophone array length
     # How: Returns all-True mask if None, otherwise adjusts mask length to match hydrophone count

@@ -56,7 +56,7 @@ class Logic():
         print(f"DEBUG: POSSIBLE BANDWIDTH: {self.s.get_bandwidth(self.s.get_sample_rate())}")  
         print(f"DEBUG: ANALYZERS: {self.s.get_analyzers()}")  
         
-    def start_capture(self, seconds, output_dir):
+    def start_csv_capture(self, seconds, output_dir):
         csv_path = os.path.join(output_dir,"TEMP.csv")
         self.s.set_capture_seconds(seconds)
         self.s.capture_start_and_wait_until_finished()
@@ -65,32 +65,11 @@ class Logic():
             time.sleep(0.5)
         return csv_path
     
-    def export_binary_channel(self, seconds, output_dir):
-        """
-        Export current capture to binary files, one .bin per active analog channel.
-        Returns a list of file paths in channel order.
-        Naming: TEMP_A{ch}.bin
-        """
-
-        # bin_path = os.path.join(output_dir, f"TEMP.bin")
-        # self.s.set_capture_seconds(seconds)
-        # self.s.capture_start_and_wait_until_finished()
-        # self.s.export_data2(file_path_on_target_machine=str(bin_path), format='binary')
-        # while not self.s.is_processing_complete():
-        #     time.sleep(0.5)
-        # return bin_path
-        ## OLD CODE
-        bin_paths = []
-        digital_channels, analog_channels = self.s.get_active_channels()
+    def export_binary_capture(self, seconds, output_dir):
+        bin_path = os.path.join(output_dir, f"TEMP.bin")
         self.s.set_capture_seconds(seconds)
         self.s.capture_start_and_wait_until_finished()
-        for ch in analog_channels:
-            bin_path = os.path.join(output_dir, f"TEMP_A{ch}.bin")
-            self.s.capture_start_and_wait_until_finished
-            self.s.export_data2(file_path_on_target_machine=str(bin_path), analog_channels=[ch], digital_channels=[], format='binary')
-            while not self.s.is_processing_complete():
-                time.sleep(0.5)
-            print(bin_path)
-            bin_paths.append(bin_path)
-
-        return bin_paths
+        self.s.export_data2(file_path_on_target_machine=bin_path, analog_channels=self.CHANNELS, format='binary')
+        while(not self.s.is_processing_complete()):
+            time.sleep(0.5)
+        return bin_path
