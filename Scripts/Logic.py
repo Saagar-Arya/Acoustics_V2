@@ -73,3 +73,19 @@ class Logic():
         while(not self.s.is_processing_complete()):
             time.sleep(0.5)
         return bin_path
+    
+    def export_binary_and_csv_capture(self, seconds, output_dir):
+        bin_path = os.path.join(output_dir, f"TEMP.bin")
+        csv_path = os.path.join(output_dir,"TEMP.csv")
+
+        self.s.set_capture_seconds(seconds)
+        self.s.capture_start_and_wait_until_finished()
+        self.s.export_data2(file_path_on_target_machine=bin_path, analog_channels=self.CHANNELS, format='binary')
+        while(not self.s.is_processing_complete()):
+            time.sleep(0.5)
+       
+        self.s.export_data2(file_path_on_target_machine=csv_path, format='csv')
+        while(not self.s.is_processing_complete()):
+            time.sleep(0.5)
+            
+        return bin_path, csv_path
