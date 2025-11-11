@@ -11,7 +11,7 @@ from scipy.signal import hilbert
 from scipy.fft import fft, ifft, fftfreq
 
 import Hydrophone
-
+import struct
 
 class HydrophoneArray:
     """Manages an array of hydrophones with signal processing and time-of-arrival detection capabilities."""
@@ -58,9 +58,20 @@ class HydrophoneArray:
         if self.data_collection:
             self._setup_data_collection()
 
+    # Goal: Load time-voltage data from a file into hydrophone array
+    # Return: None
+    def load_from_path(self, path: str)-> None:
+        ext = os.path.splitext(path)[1].lower()
+        if ext == ".bin":
+            return self.load_from_bin(path)
+        elif ext == ".csv":
+            return self.load_from_csv(path)
+        else:
+            raise ValueError(f"Unsupported file type: {ext}. Expected .bin or .csv")
+        
     # Goal: Load time-voltage data from a CSV file into hydrophone array
     # How: Detects and skips header rows, then populates each hydrophone with time and voltage data
-    # Return: None (modifies hydrophone objects in place)
+    # Return: None
     def load_from_csv(self, path: str) -> None:
         self.reset_selected()
 
@@ -82,6 +93,28 @@ class HydrophoneArray:
             hydrophone.times = times
             hydrophone.voltages = data.iloc[:, idx + 1].to_numpy()
 
+    # Goal: Load time-voltage data from a binary file into hydrophone array
+    # How: Parses binary header to extract sample count, then reads voltage samples for each hydrophone channel
+    # Return: None
+    def load_from_bin(self, path: str) -> None:
+        self.reset_selected()
+
+        with open(path, "rb") as f:
+            # Read header: 8 bytes uint64, 4 bytes uint32, 8 bytes double (little-endian)
+            header = f.read(8 + 4 + 8)
+            num_samples, num_channels, sample_period = struct.unpack("<QId", header)
+
+            # read all float32 samples
+            total_floats = num_samples * num_channels
+            float_bytes = f.read(total_floats * 4)
+            data = np.frombuffer(float_bytes, dtype="<f4")  # little-endian float32
+            data = data.reshape((num_channels, num_samples))
+
+        # Create time base
+        times = np.arange(num_samples, dtype=np.float64) * sample_period
+        for idx, hydrophone in enumerate(self.hydrophones):
+            hydrophone.times = times
+            hydrophone.voltages = data[idx]
 
     # Goal: Normalize selection mask to match hydrophone array length
     # How: Returns all-True mask if None, otherwise adjusts mask length to match hydrophone count
