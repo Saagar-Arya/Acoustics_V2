@@ -6,12 +6,12 @@ import csv
 
 import numpy as np
 import pandas as pd
+import struct
 import matplotlib.pyplot as plt
 from scipy.signal import hilbert
 from scipy.fft import fft, ifft, fftfreq
 
 import Hydrophone
-import struct
 
 class HydrophoneArray:
     """Manages an array of hydrophones with signal processing and time-of-arrival detection capabilities."""
