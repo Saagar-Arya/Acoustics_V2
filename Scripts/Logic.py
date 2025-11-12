@@ -1,3 +1,4 @@
+import subprocess
 import saleae
 import time
 import os 
@@ -15,7 +16,7 @@ class Logic():
         elif sys.platform == "darwin":
             self.LOGIC_PATH = "Logic-1.2.40-MacOS.dmg"
         elif sys.platform == "linux":
-            print("Running on Linux")
+            self.LOGIC_PATH = "Logic-1.2.40-Linux.AppImage"
         else:
             print(f"Unknown OS: {sys.platform}")
 
@@ -28,7 +29,8 @@ class Logic():
         self.H3_CHANNEL = 3
         self.CHANNELS = [self.H0_CHANNEL, self.H1_CHANNEL, self.H2_CHANNEL, self.H3_CHANNEL]
         
-        self.start_logic()
+        if (not sys.platform == "linux"):
+            self.start_logic()
         self.s = saleae.Saleae(host=self.HOST, port=self.PORT, quiet=self.QUIET)
         self.launch_configure()
 
