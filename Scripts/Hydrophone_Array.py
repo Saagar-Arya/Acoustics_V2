@@ -10,6 +10,7 @@ import struct
 import matplotlib.pyplot as plt
 from scipy.signal import hilbert
 from scipy.fft import fft, ifft, fftfreq
+import time
 
 import Hydrophone
 
@@ -22,6 +23,8 @@ class HydrophoneArray:
         search_band_min: float = 25000,
         search_band_max: float = 40000,
         bandwidth: float = 100.0,
+        enable_data_sample: bool = False,
+        data_sample_out_dir: str = "",
     ):
         self.search_band_min = search_band_min
         self.search_band_max = search_band_max
@@ -35,13 +38,105 @@ class HydrophoneArray:
 
         self.threshold_factor = 0.3
 
+        self.last_data = ""
+
+        self.enable_data_sample = enable_data_sample 
+        self.data_sample_out_dir = data_sample_out_dir
+        if self.enable_data_sample:
+            self.data_sample_path = self.setup_data_sample()
+
+    def setup_data_sample(self):
+        out_dir = self.data_sample_out_dir or os.getcwd()
+        os.makedirs(out_dir, exist_ok=True)
+
+        # timestamped filename to avoid clobbering existing files
+        ts = time.strftime('%Y-%m-%d--%H-%M-%S')
+        filename = f"data_sample_{ts}.csv"
+        path = os.path.join(out_dir, filename)
+
+        headers = [
+            "Truth",
+            "Envelope",
+            "Envelope H0",
+            "Envelope H1",
+            "Envelope H2",
+            "Envelope H3",
+            "GCC",
+            "GCC H0",
+            "GCC H1",
+            "GCC H2",
+            "GCC H3",
+        ]
+        with open(path, mode="w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(headers)
+
+        return path
+
+    def data_sample(self, truth = None):
+        if truth is None:
+            if self.last_data:
+                base = os.path.basename(self.last_data)
+                prefix = base.split("_", 1)[0]
+                if prefix.isdigit():
+                    val = int(prefix)
+                    if 0 <= val <= 7:
+                        truth = val
+
+        # Determine earliest hydrophone by envelope (smallest toa_time)
+        envelope_candidates = [
+            (i, hp.toa_time)
+            for i, hp in enumerate(self.hydrophones)
+            if getattr(hp, "toa_time", None) is not None and getattr(hp, "found_peak", False)
+        ]
+        if envelope_candidates:
+            envelope_first = min(envelope_candidates, key=lambda x: x[1])[0]
+        else:
+            envelope_first = ""
+
+        # Determine earliest hydrophone by GCC (smallest gcc_tdoa)
+        gcc_candidates = [
+            (i, hp.gcc_tdoa)
+            for i, hp in enumerate(self.hydrophones)
+            if getattr(hp, "gcc_tdoa", None) is not None
+        ]
+        if gcc_candidates:
+            gcc_first = min(gcc_candidates, key=lambda x: x[1])[0]
+        else:
+            gcc_first = ""
+
+        row = [
+            truth,
+            envelope_first,
+            self.hydrophones[0].toa_time,
+            self.hydrophones[1].toa_time,
+            self.hydrophones[2].toa_time,
+            self.hydrophones[3].toa_time,
+            gcc_first,
+            self.hydrophones[0].gcc_tdoa,
+            self.hydrophones[1].gcc_tdoa,
+            self.hydrophones[2].gcc_tdoa,
+            self.hydrophones[3].gcc_tdoa,
+        ]
+
+        # Ensure data sample file exists (create header if missing)
+        if not getattr(self, "data_sample_path", None):
+            self.data_sample_path = self.setup_data_sample()
+
+        # Append row to the CSV (don't overwrite header)
+        with open(self.data_sample_path, mode="a", newline="", encoding="utf-8") as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(row)
+
     # Goal: Load time-voltage data from a file into hydrophone array
     # Return: None
     def load_from_path(self, path: str)-> None:
         ext = os.path.splitext(path)[1].lower()
         if ext == ".bin":
+            self.last_data = path
             return self.load_from_bin(path)
         elif ext == ".csv":
+            self.last_data = path
             return self.load_from_csv(path)
         else:
             raise ValueError(f"Unsupported file type: {ext}. Expected .bin or .csv")
@@ -331,6 +426,7 @@ class HydrophoneArray:
 
             hydrophone.gcc_tdoa = tdoa
             hydrophone.gcc_cc = gcc
+        
 
     # Goal: Print TDOA results from GCC-PHAT estimation
     # How: Iterates through selected hydrophones and displays their time delay values
