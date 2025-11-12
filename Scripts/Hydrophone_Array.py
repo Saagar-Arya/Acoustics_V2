@@ -22,9 +22,6 @@ class HydrophoneArray:
         search_band_min: float = 25000,
         search_band_max: float = 40000,
         bandwidth: float = 100.0,
-        data_collection: bool = False,
-        data_collection_path: str = "",
-        data_collection_target: int = 0
     ):
         self.search_band_min = search_band_min
         self.search_band_max = search_band_max
@@ -37,26 +34,6 @@ class HydrophoneArray:
         ]
 
         self.threshold_factor = 0.3
-
-        self.data_collection = data_collection
-        self.data_collection_path = data_collection_path
-        self.data_collection_target = data_collection_target
-        self.headers = [
-            "Target_Hydrophone",
-            "Earliest_Hydrophone_TOA",
-            "Hydrophone_0_TOA",
-            "Hydrophone_1_TOA",
-            "Hydrophone_2_TOA",
-            "Hydrophone_3_TOA",
-            "Earliest_Hydrophone_GCC",
-            "Hydrophone_0_TDOA",
-            "Hydrophone_1_TDOA",
-            "Hydrophone_2_TDOA",
-            "Hydrophone_3_TDOA"
-        ]
-
-        if self.data_collection:
-            self._setup_data_collection()
 
     # Goal: Load time-voltage data from a file into hydrophone array
     # Return: None
@@ -290,73 +267,6 @@ class HydrophoneArray:
         for hydrophone, is_selected in zip(self.hydrophones, selected):
             if is_selected:
                 hydrophone.reset()
-
-    # Goal: Initialize CSV file for data collection
-    # How: Creates directory and writes header row to CSV file
-    # Return: None (creates file on disk)
-    def _setup_data_collection(self) -> None:
-        os.makedirs(os.path.dirname(self.data_collection_path), exist_ok=True)
-
-        with open(self.data_collection_path, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(self.headers)
-
-        print(f"Data Collection CSV file created at {self.data_collection_path} with headers: {self.headers}")
-
-    # Goal: Append TOA detection results to data collection CSV
-    # How: Identifies earliest hydrophone and writes target ID, earliest index, and all TOAs to CSV
-    # Return: None (appends row to CSV file)
-    def append_envelope_data(self) -> None:
-        row_data = [self.data_collection_target]
-
-        sorted_toa = sorted(
-            enumerate(self.hydrophones),
-            key=lambda ih: (not ih[1].found_peak, ih[1].toa_time if ih[1].toa_time is not None else float('inf'))
-        )
-
-        earliest_hydrophone_idx = sorted_toa[0][0]
-        row_data.append(earliest_hydrophone_idx)
-        print(f"Earliest hydrophone (envelope): {earliest_hydrophone_idx}")
-
-        row_data.extend([h.toa_time for h in self.hydrophones])
-
-        with open(self.data_collection_path, mode='a', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(row_data)
-
-    # Goal: Append combined TOA and GCC-PHAT results to data collection CSV
-    # How: Identifies earliest hydrophone for both methods and writes all timing data to CSV
-    # Return: None (appends row to CSV file)
-    def append_combined_data(self) -> None:
-        row_data = [self.data_collection_target]
-
-        # Find earliest hydrophone by envelope TOA
-        sorted_toa = sorted(
-            enumerate(self.hydrophones),
-            key=lambda ih: (not ih[1].found_peak, ih[1].toa_time if ih[1].toa_time is not None else float('inf'))
-        )
-        earliest_toa_idx = sorted_toa[0][0]
-        row_data.append(earliest_toa_idx)
-        print(f"Earliest hydrophone (envelope): {earliest_toa_idx}")
-
-        # Append each hydrophone's TOA
-        row_data.extend([h.toa_time for h in self.hydrophones])
-
-        # Find earliest hydrophone by GCC-PHAT TDOA (smallest TDOA relative to reference)
-        sorted_gcc = sorted(
-            enumerate(self.hydrophones),
-            key=lambda ih: (ih[1].gcc_tdoa is None, ih[1].gcc_tdoa if ih[1].gcc_tdoa is not None else float('inf'))
-        )
-        earliest_gcc_idx = sorted_gcc[0][0]
-        row_data.append(earliest_gcc_idx)
-        print(f"Earliest hydrophone (GCC): {earliest_gcc_idx}")
-
-        # Append each hydrophone's TDOA
-        row_data.extend([h.gcc_tdoa for h in self.hydrophones])
-
-        with open(self.data_collection_path, mode='a', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(row_data)
 
     # Goal: Compute GCC-PHAT cross-correlation between two signals for time delay estimation
     # How: Uses FFT-based cross-correlation with phase transform weighting for noise robustness
