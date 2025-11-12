@@ -65,8 +65,8 @@ class Logic():
             time.sleep(0.5)
         return csv_path
     
-    def export_binary_capture(self, seconds, output_dir):
-        bin_path = os.path.join(output_dir, f"TEMP.bin")
+    def export_binary_capture(self, seconds, output_dir, name = "TEMP.bin"):
+        bin_path = os.path.join(output_dir, name)
         self.s.set_capture_seconds(seconds)
         self.s.capture_start_and_wait_until_finished()
         self.s.export_data2(file_path_on_target_machine=bin_path, analog_channels=self.CHANNELS, format='binary')

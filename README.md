@@ -1,7 +1,4 @@
 # Acoustics V2
-First draft of acoustics processing.
-To be transferred to primary robotics repo at a later date.
-
 ## One - Time SETUP (ONLY SUPPORTING MAC + WINDOWS rn)
 Clone Repo
 Open Saleae standalone

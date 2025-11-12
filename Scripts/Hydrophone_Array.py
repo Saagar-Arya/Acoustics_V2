@@ -126,7 +126,6 @@ class HydrophoneArray:
             return list(selected[:len(self.hydrophones)]) + [False] * max(0, len(self.hydrophones) - len(selected))
         return selected
 
-
     # Goal: Plot time-series envelope data for selected hydrophones
     # How: Creates subplots for each selected hydrophone and displays their envelope detection results
     # Return: None (displays matplotlib figure)
@@ -172,7 +171,6 @@ class HydrophoneArray:
         ax.legend(loc="best")
         ax.grid(True)
 
-
     # Goal: Print time-of-arrival for all hydrophones sorted by detection time
     # How: Sorts hydrophones by TOA and prints each with detection status
     # Return: None (prints to console)
@@ -187,7 +185,6 @@ class HydrophoneArray:
                 print(f"Hydrophone {i} saw ping at {hydrophone.toa_time:.6f}s (found_peak={hydrophone.found_peak})")
             else:
                 print(f"Hydrophone {i} saw ping at N/A (found_peak={hydrophone.found_peak})")
-
 
     # Goal: Apply bandpass filter to hydrophone signal using FFT
     # How: Two modes - center frequency with bandwidth, or frequency range filtering
@@ -251,8 +248,7 @@ class HydrophoneArray:
             hydrophone.filtered_signal = filtered_signal
             hydrophone.peak_freq = peak_freq
             return filtered_signal
-
-                            
+                     
     # Goal: Estimate time-of-arrival using envelope detection method
     # How: Applies bandpass filter, computes Hilbert envelope, and detects TOA via threshold crossing
     # Return: None (modifies hydrophone object with TOA data)
@@ -285,7 +281,6 @@ class HydrophoneArray:
         for hydrophone, is_selected in zip(self.hydrophones, selected):
             if is_selected:
                 self.estimate_toa_by_envelope(hydrophone)
-
 
     # Goal: Reset selected hydrophones to clear previously loaded data
     # How: Calls reset method on each selected hydrophone object
@@ -363,8 +358,6 @@ class HydrophoneArray:
             writer = csv.writer(file)
             writer.writerow(row_data)
 
-
-
     # Goal: Compute GCC-PHAT cross-correlation between two signals for time delay estimation
     # How: Uses FFT-based cross-correlation with phase transform weighting for noise robustness
     # Return: Tuple of (cross_correlation array, lag index, time delay in seconds)
@@ -440,7 +433,6 @@ class HydrophoneArray:
                     print(f"Hydrophone {i}: TDOA = {hydrophone.gcc_tdoa * 1e6:.2f} μs ({hydrophone.gcc_tdoa:.9f} s)")
                 else:
                     print(f"Hydrophone {i}: TDOA = N/A")
-
 
     # Goal: Plot GCC-PHAT cross-correlation results for selected hydrophones
     # How: Creates subplots showing correlation vs time delay with TDOA markers

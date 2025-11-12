@@ -6,8 +6,10 @@ import Hydrophone_Array
 
 SAMPLING_FREQ = 781250
 SELECTED = [True, True, True, True]
+prefix = ""
+time_stamp = time.strftime('%Y-%m-%d--%H-%M-%S')
+folder = prefix + time_stamp
 
-folder = time.strftime('%Y-%m-%d--%H-%M-%S')
 base_path = os.path.join("Scripts", folder)
 os.mkdir(base_path)
 
