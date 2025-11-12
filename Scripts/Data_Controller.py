@@ -7,10 +7,11 @@ import Hydrophone_Array
 SAMPLING_FREQ = 781250
 SELECTED = [True, True, True, True]
 
+
 prefix = ""
 data_collection = prefix + "Data_Collection"
 base_path = os.path.join("Scripts", data_collection)
-os.mkdir(base_path)
+os.makedirs(base_path, exist_ok = True)
 
 logic = LOGIC.Logic(sampling_freq=SAMPLING_FREQ)
 logic.print_saleae_status()
