@@ -6,8 +6,8 @@ import Hydrophone_Array
 
 SAMPLING_FREQ = 781250
 SELECTED = [True, True, True, True]
-
-prefix = "1_"
+# what is the truth of the hydrophone
+prefix = ""
 data_collection = "Data_Collection"
 base_path = os.path.join("Scripts", data_collection)
 os.makedirs(base_path, exist_ok = True)
