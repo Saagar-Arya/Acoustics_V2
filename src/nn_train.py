@@ -28,7 +28,7 @@ class HydrophoneDataset(Dataset):
     excluded from the CSV.
 
     Expected CSV columns (header required):
-        hydrophone_1, hydrophone_2, hydrophone_3, label
+        Envelope H1, Envelope H2, Envelope H3, Truth
 
     Notes
     -----
@@ -49,7 +49,7 @@ class HydrophoneDataset(Dataset):
         Parameters
         ----------
         csv_path : str
-            Path to CSV with columns: hydrophone_1, hydrophone_2, hydrophone_3, label.
+            Path to CSV with columns: Envelope H1, Envelope H2, Envelope H3, Truth.
         dtype : torch.dtype
             Torch dtype for features (default: torch.float32).
 
@@ -71,13 +71,13 @@ class HydrophoneDataset(Dataset):
         header = [h.strip() for h in rows[0]]
 
         try:
-            idx1 = header.index("hydrophone_1")
-            idx2 = header.index("hydrophone_2")
-            idx3 = header.index("hydrophone_3")
-            idxy = header.index("label")
+            idx1 = header.index("Envelope H1")
+            idx2 = header.index("Envelope H2")
+            idx3 = header.index("Envelope H3")
+            idxy = header.index("Truth")
         except ValueError as e:
             raise ValueError(
-                "CSV must include header columns: hydrophone_1, hydrophone_2, hydrophone_3, label"
+                "CSV must include header columns: Envelope H1, Envelope H2, Envelope H3, Truth"
             ) from e
 
         feats, labels = [], []
@@ -202,8 +202,9 @@ def accuracy(probs, y):
 
 
 def main():
+    default_path = "Scripts/Data_Collection/data_sample_2025-11-14--09-11-28.csv"
     parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", required=True, help="Path to hydrophone CSV file")
+    parser.add_argument("--csv", required=False, help="Path to hydrophone CSV file", default=default_path)
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--batch", type=int, default=32)
@@ -216,7 +217,7 @@ def main():
     print(f"Using device: {device}")
 
     # Load dataset
-    ds = HydrophoneDataset("data/nn_sample_data.csv")
+    ds = HydrophoneDataset(args.csv)
     n = len(ds)
     n_train = int(0.8 * n)
     n_val = n - n_train

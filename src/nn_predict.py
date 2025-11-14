@@ -6,7 +6,7 @@ Usage:
     python src/nn_predict.py --ckpt artifacts/hydrophone_model.pt --csv data/nn_sample_data.csv --out probs.csv
 
 The input CSV must have columns:
-    hydrophone_1, hydrophone_2, hydrophone_3[, label]
+    [label ,] Envelope H1, Envelope H2, Envelope H3
 
 The output CSV will include per-class probabilities and the predicted class.
 """
@@ -55,11 +55,11 @@ def read_csv_features(path: str) -> Tuple[torch.Tensor, List[str], List[List[str
     header = [h.strip() for h in rows[0]]
 
     try:
-        idx1 = header.index("hydrophone_1")
-        idx2 = header.index("hydrophone_2")
-        idx3 = header.index("hydrophone_3")
+        idx1 = header.index("Envelope H1")
+        idx2 = header.index("Envelope H2")
+        idx3 = header.index("Envelope H3")
     except ValueError as e:
-        raise ValueError("Input CSV must include columns: hydrophone_1, hydrophone_2, hydrophone_3") from e
+        raise ValueError("Input CSV must include columns: Envelope H1, Envelope H2, Envelope H3") from e
 
     Xlist = []
     for r in rows[1:]:
@@ -130,7 +130,7 @@ def infer_num_classes_from_state_dict(state_dict: dict) -> int:
 def main():
     parser = argparse.ArgumentParser(description="Hydrophone probability inference")
     parser.add_argument("--ckpt", required=True, help="Path to checkpoint .pt file (from training script)")
-    parser.add_argument("--csv", required=True, help="Path to input CSV with hydrophone_1..3")
+    parser.add_argument("--csv", required=True, help="Path to input CSV with Envelope H1..3")
     parser.add_argument("--out", default="predictions.csv", help="Path to output CSV")
     parser.add_argument("--batch", type=int, default=256, help="Batch size for inference")
     args = parser.parse_args()
