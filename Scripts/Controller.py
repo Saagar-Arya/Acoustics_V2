@@ -28,7 +28,7 @@ SELECTED = [True, True, True, True]
 # path = "Scripts/2025-10-09--18-43-46_0-1/SAMPLE.csv"
 # path = "Scripts/2025-10-09--18-47-46_0-1/SAMPLE.csv"
 # path = "Scripts/2025-11-11--00-25-09/TEMP.bin"
-path = "Scripts/0_Data_Collection/0_2025-11-16--15-05-01.bin"
+path = "Scripts/0_Data_Collection/0_2025-11-16--15-31-44.bin"
 
 hydrophone_array = Hydrophone_Array.HydrophoneArray(sampling_freq=SAMPLING_FREQ)
 hydrophone_array.load_from_path(path)
