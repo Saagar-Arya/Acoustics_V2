@@ -17,6 +17,8 @@ logic.print_saleae_status()
 
 epochs = 100
 for epoch in range (0, epochs):
+    print(f"epoch {epoch}")
+    
     time_stamp = time.strftime('%Y-%m-%d--%H-%M-%S')
     name = prefix + time_stamp
     logic.export_binary_capture(2, base_path, name)

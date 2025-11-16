@@ -71,7 +71,7 @@ class HydrophoneDataset(Dataset):
         header = [h.strip() for h in rows[0]]
 
         try:
-            idx1 = header.index("Envelope H1")
+            # idx1 = header.index("Envelope H1")
             idx2 = header.index("Envelope H2")
             idx3 = header.index("Envelope H3")
             idxy = header.index("Truth")
@@ -84,7 +84,9 @@ class HydrophoneDataset(Dataset):
         for r in rows[1:]:
             if not r or all(c.strip() == "" for c in r):
                 continue
-            feats.append([float(r[idx1]), float(r[idx2]), float(r[idx3])])
+            #feats.append([float(r[idx1]), float(r[idx2]), float(r[idx3])])
+            feats.append([float(r[idx2]), float(r[idx3])])
+
             labels.append(int(float(r[idxy])))
 
         X = torch.tensor(feats, dtype=dtype)
@@ -160,8 +162,8 @@ class MLPProb(nn.Module):
     model : nn.Sequential
         A sequential container implementing the layer stack.
     """
-
-    def __init__(self, in_dim=3, num_classes=4, p_drop=0.2):
+    # def __init__(self, in_dim=3, num_classes=4, p_drop=0.2):
+    def __init__(self, in_dim=2, num_classes=4, p_drop=0.2):
         super().__init__()
         self.model = nn.Sequential(
             nn.Linear(in_dim, 64),
@@ -202,10 +204,10 @@ def accuracy(probs, y):
 
 
 def main():
-    default_path = "Scripts/Data_Collection/data_sample_2025-11-14--09-11-28.csv"
+    default_path = "Scripts/Test_set/Filtered_three.csv"
     parser = argparse.ArgumentParser()
     parser.add_argument("--csv", required=False, help="Path to hydrophone CSV file", default=default_path)
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=1000)
     parser.add_argument("--lr", type=float, default=0.001)
     parser.add_argument("--batch", type=int, default=32)
     parser.add_argument("--dropout", type=float, default=0.2)
@@ -227,7 +229,8 @@ def main():
     val_loader = DataLoader(val_ds, batch_size=args.batch)
 
     # Build model
-    model = MLPProb(in_dim=3, num_classes=4, p_drop=args.dropout).to(device)
+    # model = MLPProb(in_dim=3, num_classes=4, p_drop=args.dropout).to(device)
+    model = MLPProb(in_dim=2, num_classes=4, p_drop=args.dropout).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_fn = nn.NLLLoss()  # using log(probs)
 
