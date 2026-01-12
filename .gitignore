@@ -1,3 +1,6 @@
 version https://git-lfs.github.com/spec/v1
 oid sha256:9121c9b1b4235cade39d41d3c6c1a4b947e4ae258467051dc7bbdc0d913b8d56
 size 1038
+Scripts/Acoustics_Thruster_Data_Amp_Then_Filter_11_20.csv
+Scripts/Acoustics_Thruster_Data_Filter_Then_Amp_11_20.csv
+Scripts/Acoustics_Thruster_Data_Raw_Hydrophone_11_20.csv
